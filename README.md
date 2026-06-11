@@ -113,11 +113,22 @@ web/index.html           # 聊天界面：流式渲染、来源徽章、原文�
 - [v0.1 MVP：RAG基础链路](docs/v0.1-mvp-rag基础链路.md) — 按页溯源设计、中文切块、FAISS实战、防幻觉Prompt
 - [v0.2 LangGraph Agentic RAG](docs/v0.2-langgraph-agentic-rag.md) — 图编排 vs 自由agent、条件边与自修正循环、双通道流式
 - [v0.3 混合检索与Rerank精排](docs/v0.3-混合检索与rerank精排.md) — BM25互补性、RRF融合、交叉编码器原理、两阶段架构
+- [v0.4 RAGAS评估体系](docs/v0.4-ragas评估体系.md) — 无参考指标、双环境解耦、LLM裁判的坑、诚实的trade-off分析
+
+## 评估结果（v0.1基线 → v0.3完整链路）
+
+| 指标 | 基线 | 完整链路 | Δ |
+|---|---|---|---|
+| AnswerRelevancy | 0.841 | 0.890 | +0.049 |
+| ContextPrecision | 0.678 | 0.726 | +0.048（数字事实类 +0.255） |
+| Faithfulness | 0.880 | 0.847 | -0.034（详见报告中的trade-off分析） |
+
+完整分类别数据与归因分析见 [eval/results.md](eval/results.md)。
 
 ## Roadmap
 
 - [x] **Agentic RAG**（LangGraph）：问题路由 + 拆解 + 多路检索 + 低分自动改写重试
 - [x] **混合检索 + 重排**：BM25 + 向量双路召回 RRF 融合，bge-reranker-v2-m3 精排
+- [x] **RAGAS 评估体系**：16题分类评估集，基线vs完整链路对照，DeepSeek裁判三指标（[报告](eval/results.md)）
 - [ ] **图表多模态解析**：280 个被跳过的扫描/图表页，用视觉模型转为可检索文本
-- [ ] **RAGAS 评估体系**：构建评测集，量化检索/生成质量
 - [ ] **Milvus 迁移**：基于现有 VectorStore 抽象层
