@@ -55,6 +55,15 @@
     color: #fff; font-size: 15px; cursor: pointer;
   }
   #send:disabled { background: #b8bee8; cursor: not-allowed; }
+  #mode-toggle {
+    display: flex; border: 1px solid #d8dbe8; border-radius: 10px;
+    overflow: hidden; flex-shrink: 0;
+  }
+  #mode-toggle button {
+    border: none; background: #fff; padding: 0 14px; font-size: 13px;
+    color: #666; cursor: pointer; font-family: inherit;
+  }
+  #mode-toggle button.active { background: #5b6bf0; color: #fff; }
   .typing { color: #999; font-size: 13px; }
   .ref {
     display: inline-block; background: #eef0fe; color: #5b6bf0;
@@ -77,6 +86,10 @@
 </div>
 <div id="input-area">
   <div id="input-row">
+    <div id="mode-toggle">
+      <button id="mode-fast" class="active" title="deepseek-v4-flash，响应快">快速</button>
+      <button id="mode-thinking" title="deepseek-v4-pro，推理更深">思考</button>
+    </div>
     <textarea id="question" rows="1" placeholder="例如：2025年具身智能市场规模预测是多少？"></textarea>
     <button id="send">发送</button>
   </div>
@@ -85,6 +98,15 @@
 const chat = document.getElementById('chat');
 const input = document.getElementById('question');
 const sendBtn = document.getElementById('send');
+
+let mode = 'fast';
+for (const m of ['fast', 'thinking']) {
+  document.getElementById('mode-' + m).addEventListener('click', () => {
+    mode = m;
+    document.getElementById('mode-fast').classList.toggle('active', m === 'fast');
+    document.getElementById('mode-thinking').classList.toggle('active', m === 'thinking');
+  });
+}
 
 function renderAnswer(text) {
   const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -159,7 +181,7 @@ async function ask() {
     const resp = await fetch('/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q }),
+      body: JSON.stringify({ question: q, mode }),
     });
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();

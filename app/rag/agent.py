@@ -37,6 +37,7 @@ REWRITE_PROMPT = """以下查询在行业报告知识库中检索效果差，请
 
 class AgentState(TypedDict, total=False):
     question: str
+    mode: str            # fast | thinking，仅影响最终合成；内部决策固定走fast
     route: str
     sub_queries: list[str]
     hits: list[dict]
@@ -45,7 +46,7 @@ class AgentState(TypedDict, total=False):
 
 
 def _llm_json(prompt: str) -> dict:
-    llm = get_llm(streaming=False).bind(response_format={"type": "json_object"})
+    llm = get_llm(streaming=False, mode="fast").bind(response_format={"type": "json_object"})
     try:
         return json.loads(llm.invoke(prompt).content)
     except (json.JSONDecodeError, KeyError):
@@ -88,7 +89,7 @@ def synthesize_node(state: AgentState) -> AgentState:
     prompt = SYSTEM_PROMPT + "\n\n" + USER_PROMPT.format(
         context=build_context(state["hits"]), question=state["question"]
     )
-    answer = get_llm().invoke(prompt)
+    answer = get_llm(mode=state.get("mode", "fast")).invoke(prompt)
     return {"answer": answer.content}
 
 
@@ -121,18 +122,18 @@ def get_graph():
     return g.compile()
 
 
-def stream_agent(question: str) -> Iterator[dict]:
+def stream_agent(question: str, mode: str = "fast") -> Iterator[dict]:
     """产出事件流：{"type": "step"|"sources"|"token", "data": ...}"""
     graph = get_graph()
-    for mode, chunk in graph.stream(
-        {"question": question},
+    for stream_mode, chunk in graph.stream(
+        {"question": question, "mode": mode},
         stream_mode=["updates", "messages"],
     ):
-        if mode == "messages":
+        if stream_mode == "messages":
             msg, meta = chunk
             if meta.get("langgraph_node") == "synthesize" and msg.content:
                 yield {"type": "token", "data": msg.content}
-        elif mode == "updates":
+        elif stream_mode == "updates":
             for node, delta in chunk.items():
                 if node == "route":
                     label = "复杂问题，需拆解检索" if delta["route"] == "complex" else "简单问题，直接检索"

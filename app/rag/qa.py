@@ -4,7 +4,7 @@ from typing import Iterator
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-from app.config import DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, TOP_K
+from app.config import DEEPSEEK_BASE_URL, DEEPSEEK_MODELS, DEFAULT_MODE, TOP_K
 from app.rag.embedder import embed_query
 from app.rag.vectorstore import get_vector_store
 
@@ -23,9 +23,9 @@ USER_PROMPT = """资料：
 问题：{question}"""
 
 
-def get_llm(streaming: bool = True) -> ChatOpenAI:
+def get_llm(streaming: bool = True, mode: str = DEFAULT_MODE) -> ChatOpenAI:
     return ChatOpenAI(
-        model=DEEPSEEK_MODEL,
+        model=DEEPSEEK_MODELS.get(mode, DEEPSEEK_MODELS[DEFAULT_MODE]),
         base_url=DEEPSEEK_BASE_URL,
         api_key=os.environ["DEEPSEEK_API_KEY"],
         temperature=0.3,

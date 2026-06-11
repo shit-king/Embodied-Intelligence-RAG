@@ -17,7 +17,12 @@ CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_MODEL = "deepseek-chat"
+# 问答模型双档：快速/思考，由前端切换；agent内部决策（路由/拆解/改写）固定走快速档
+DEEPSEEK_MODELS = {
+    "fast": "deepseek-v4-flash",
+    "thinking": "deepseek-v4-pro",
+}
+DEFAULT_MODE = "fast"
 
 VL_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 VL_MODEL = "qwen-vl-plus"

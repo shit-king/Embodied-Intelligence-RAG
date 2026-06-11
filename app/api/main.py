@@ -26,12 +26,13 @@ app = FastAPI(title="具身智能RAG问答", lifespan=lifespan)
 
 class AskRequest(BaseModel):
     question: str
+    mode: str = "fast"
 
 
 @app.post("/ask")
 def ask(req: AskRequest) -> StreamingResponse:
     def gen():
-        for evt in stream_agent(req.question):
+        for evt in stream_agent(req.question, req.mode):
             if evt["type"] == "token":
                 yield f"data: {json.dumps(evt['data'], ensure_ascii=False)}\n\n"
             else:
