@@ -106,6 +106,14 @@ web/index.html           # 聊天界面：流式渲染、来源徽章、原文�
 
 当前语料规模：120 份报告（去重后）→ 4,765 文本页 → 10,933 个向量块。
 
+## 技术笔记
+
+每个版本的设计动机、技术要点与踩坑记录：
+
+- [v0.1 MVP：RAG基础链路](docs/v0.1-mvp-rag基础链路.md) — 按页溯源设计、中文切块、FAISS实战、防幻觉Prompt
+- [v0.2 LangGraph Agentic RAG](docs/v0.2-langgraph-agentic-rag.md) — 图编排 vs 自由agent、条件边与自修正循环、双通道流式
+- [v0.3 混合检索与Rerank精排](docs/v0.3-混合检索与rerank精排.md) — BM25互补性、RRF融合、交叉编码器原理、两阶段架构
+
 ## Roadmap
 
 - [x] **Agentic RAG**（LangGraph）：问题路由 + 拆解 + 多路检索 + 低分自动改写重试
