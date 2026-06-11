@@ -135,7 +135,7 @@ function renderSources(container, sources) {
     const details = document.createElement('details');
     details.className = 'source-item';
     const summary = document.createElement('summary');
-    summary.textContent = `来源${i + 1} 《${s.source}》 第${s.page}页`;
+    summary.textContent = `来源${i + 1} 《${s.source}》 第${s.page}页` + (s.kind === 'chart' ? ' · 图表页' : '');
     const snippet = document.createElement('div');
     snippet.className = 'snippet';
     snippet.textContent = s.text;

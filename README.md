@@ -10,6 +10,7 @@
 
 - **Agentic RAG**（LangGraph）：自动路由——简单问题直接检索，复杂问题（对比/综合/多主题）拆解为多个子查询分路召回再合并；检索相关度不足时自动改写查询重试；agent每步决策实时推送到前端
 - **混合检索 + 精排**：向量（bge-m3）与 BM25（jieba）双路召回，RRF 融合，bge-reranker-v2-m3 交叉编码精排——专有名词、数字事实类查询显著提升（如"Unitree Dex5"从混入无关结果到 top3 全中 0.99 分）
+- **图表多模态**：280个无文字层的扫描/图表页经 Qwen-VL 转写为结构化文本（图表数据点、表格、产业链图谱）入库，图表里的数字也能被检索问答，来源卡片带"图表页"标记
 - **来源可溯源**：回答中的每个论断标注 `[来源N]`，前端展示报告名、页码与可展开的原文片段；资料中没有的信息明确回答"未提及"，抑制幻觉
 - **流式输出**：SSE 推送，先返回检索来源，再逐字输出回答
 - **多源观点对比**：不同报告口径不一致时（如全球 vs 中国市场规模），分别列出并指明出处
@@ -22,7 +23,9 @@
 ```mermaid
 flowchart LR
     A[PDF报告] -->|PyMuPDF 按页解析| B[页级JSON<br>+哈希去重]
+    A -->|无文字层的图表页<br>渲染为图片| V[Qwen-VL 转写<br>数据点/表格/图谱]
     B -->|中文递归切块<br>500字/重叠100| C[文本块<br>报告名+页码元数据]
+    V --> C
     C -->|bge-m3 本地GPU| D[(FAISS<br>向量索引)]
 ```
 
@@ -45,6 +48,7 @@ flowchart LR
 | 模块 | 选型 | 为什么 |
 |---|---|---|
 | PDF解析 | PyMuPDF | 按页提取保留页码元数据，引用可精确到页 |
+| 图表解析 | Qwen-VL（百炼API） | 图表/文档理解第一梯队；OpenAI兼容接口，提示词约束输出数据点和表格转写 |
 | 切块 | LangChain RecursiveCharacterTextSplitter | 中文标点分隔符优先级（段落>句>逗号），语义边界更完整 |
 | Embedding | bge-m3（本地GPU） | 中文检索效果第一梯队，本地推理零API成本；归一化后内积=余弦相似度 |
 | 向量库 | FAISS | 纯本地、性能稳定；代码内置 `VectorStore` 抽象层，可平滑替换 Milvus 等 |
@@ -77,6 +81,7 @@ copy .env.example .env   # 填入你的 key
 
 # 4. 构建索引（解析 → 切块 → 向量化入库，支持断点续跑）
 .venv\Scripts\python app\ingest\parse_pdfs.py
+.venv\Scripts\python app\ingest\parse_charts.py   # 可选：图表页VL转写（需.env配VL_API_KEY，百炼qwen-vl）
 .venv\Scripts\python app\ingest\build_index.py
 
 # 5. 启动服务（首次启动需约30秒加载embedding模型）
@@ -91,7 +96,8 @@ app/
 ├── config.py            # 路径、模型、切块参数集中配置
 ├── ingest/
 │   ├── parse_pdfs.py    # PDF→页级JSON：哈希去重、断点续跑、扫描页记录
-│   └── build_index.py   # 切块→bge-m3编码→FAISS入库
+│   ├── parse_charts.py  # 图表页→Qwen-VL转写为可检索文本，逐页断点续跑
+│   └── build_index.py   # 切块→bge-m3编码→FAISS入库（文本+图表统一索引）
 ├── rag/
 │   ├── embedder.py      # bge-m3 封装（单例加载、批量编码）
 │   ├── vectorstore.py   # VectorStore抽象层 + FAISS实现
@@ -114,6 +120,7 @@ web/index.html           # 聊天界面：流式渲染、来源徽章、原文�
 - [v0.2 LangGraph Agentic RAG](docs/v0.2-langgraph-agentic-rag.md) — 图编排 vs 自由agent、条件边与自修正循环、双通道流式
 - [v0.3 混合检索与Rerank精排](docs/v0.3-混合检索与rerank精排.md) — BM25互补性、RRF融合、交叉编码器原理、两阶段架构
 - [v0.4 RAGAS评估体系](docs/v0.4-ragas评估体系.md) — 无参考指标、双环境解耦、LLM裁判的坑、诚实的trade-off分析
+- [v0.5 图表多模态解析](docs/v0.5-图表多模态解析.md) — VL转写vs多模态检索的取舍、幂等管道、统一索引设计
 
 ## 评估结果（v0.1基线 → v0.3完整链路）
 
@@ -130,5 +137,5 @@ web/index.html           # 聊天界面：流式渲染、来源徽章、原文�
 - [x] **Agentic RAG**（LangGraph）：问题路由 + 拆解 + 多路检索 + 低分自动改写重试
 - [x] **混合检索 + 重排**：BM25 + 向量双路召回 RRF 融合，bge-reranker-v2-m3 精排
 - [x] **RAGAS 评估体系**：16题分类评估集，基线vs完整链路对照，DeepSeek裁判三指标（[报告](eval/results.md)）
-- [ ] **图表多模态解析**：280 个被跳过的扫描/图表页，用视觉模型转为可检索文本
+- [x] **图表多模态解析**：280 个扫描/图表页经 Qwen-VL 转写入库（890块，零失败）
 - [ ] **Milvus 迁移**：基于现有 VectorStore 抽象层

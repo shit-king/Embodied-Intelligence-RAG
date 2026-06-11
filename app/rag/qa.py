@@ -40,7 +40,8 @@ def retrieve(question: str, top_k: int = TOP_K) -> list[dict]:
 def build_context(hits: list[dict]) -> str:
     blocks = []
     for i, h in enumerate(hits, 1):
-        blocks.append(f"【来源{i}】《{h['source']}》第{h['page']}页：\n{h['text']}")
+        tag = "（图表页转写）" if h.get("kind") == "chart" else ""
+        blocks.append(f"【来源{i}】《{h['source']}》第{h['page']}页{tag}：\n{h['text']}")
     return "\n\n".join(blocks)
 
 

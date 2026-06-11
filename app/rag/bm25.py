@@ -44,6 +44,7 @@ class BM25Index:
                     "text": m["text"],
                     "source": m["source"],
                     "page": m["page"],
+                    "kind": m.get("kind", "text"),
                     "score": float(scores[idx]),
                 }
             )

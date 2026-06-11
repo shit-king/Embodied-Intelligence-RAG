@@ -19,4 +19,7 @@ CHUNK_OVERLAP = 100
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-chat"
 
+VL_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+VL_MODEL = "qwen-vl-plus"
+
 TOP_K = 6
