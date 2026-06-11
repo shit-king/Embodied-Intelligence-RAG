@@ -1,0 +1,6 @@
+.env
+data/
+具身智能/
+__pycache__/
+*.pyc
+.venv/

@@ -1,0 +1,11 @@
+pymupdf
+langchain
+langchain-openai
+langchain-community
+langchain-text-splitters
+faiss-cpu
+numpy
+sentence-transformers
+fastapi
+uvicorn[standard]
+python-dotenv
