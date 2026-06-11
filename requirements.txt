@@ -1,5 +1,6 @@
 pymupdf
 langchain
+langgraph
 langchain-openai
 langchain-community
 langchain-text-splitters

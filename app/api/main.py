@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.config import PROJECT_ROOT
-from app.rag import qa
+from app.rag.agent import stream_agent
 
 
 @asynccontextmanager
@@ -27,10 +27,11 @@ class AskRequest(BaseModel):
 @app.post("/ask")
 def ask(req: AskRequest) -> StreamingResponse:
     def gen():
-        hits, stream = qa.answer_stream(req.question)
-        yield f"event: sources\ndata: {json.dumps(hits, ensure_ascii=False)}\n\n"
-        for token in stream:
-            yield f"data: {json.dumps(token, ensure_ascii=False)}\n\n"
+        for evt in stream_agent(req.question):
+            if evt["type"] == "token":
+                yield f"data: {json.dumps(evt['data'], ensure_ascii=False)}\n\n"
+            else:
+                yield f"event: {evt['type']}\ndata: {json.dumps(evt['data'], ensure_ascii=False)}\n\n"
         yield "event: done\ndata: {}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")

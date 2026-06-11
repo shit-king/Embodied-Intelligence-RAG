@@ -60,6 +60,14 @@
     display: inline-block; background: #eef0fe; color: #5b6bf0;
     border-radius: 4px; padding: 0 5px; font-size: 12px; margin: 0 1px;
   }
+  .steps { margin-bottom: 6px; max-width: 85%; }
+  .step-line {
+    font-size: 12.5px; color: #8a8fa3; padding: 2px 0 2px 18px;
+    position: relative; line-height: 1.5;
+  }
+  .step-line::before {
+    content: '◆'; position: absolute; left: 4px; color: #b8bee8; font-size: 9px;
+  }
 </style>
 </head>
 <body>
@@ -81,6 +89,7 @@ const sendBtn = document.getElementById('send');
 function renderAnswer(text) {
   const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return esc
+    .replace(/^#{1,4}\s*(.+)$/gm, '<strong>$1</strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\[来源(\d+)\]/g, '<span class="ref">来源$1</span>');
 }
@@ -99,13 +108,24 @@ function addUserMsg(text) {
 function addBotMsg() {
   const div = document.createElement('div');
   div.className = 'msg bot';
+  const steps = document.createElement('div');
+  steps.className = 'steps';
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.innerHTML = '<span class="typing">检索资料中…</span>';
+  bubble.innerHTML = '<span class="typing">分析问题中…</span>';
+  div.appendChild(steps);
   div.appendChild(bubble);
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
-  return { div, bubble };
+  return { div, bubble, steps };
+}
+
+function addStep(steps, text) {
+  const line = document.createElement('div');
+  line.className = 'step-line';
+  line.textContent = text;
+  steps.appendChild(line);
+  chat.scrollTop = chat.scrollHeight;
 }
 
 function renderSources(container, sources) {
@@ -132,7 +152,7 @@ async function ask() {
   input.value = '';
   sendBtn.disabled = true;
   addUserMsg(q);
-  const { div, bubble } = addBotMsg();
+  const { div, bubble, steps } = addBotMsg();
   let answerText = '';
   let sources = [];
   try {
@@ -158,6 +178,8 @@ async function ask() {
         }
         if (eventType === 'sources') {
           sources = JSON.parse(data);
+        } else if (eventType === 'step') {
+          addStep(steps, JSON.parse(data));
         } else if (eventType === 'message' && data) {
           answerText += JSON.parse(data);
           bubble.innerHTML = renderAnswer(answerText);
