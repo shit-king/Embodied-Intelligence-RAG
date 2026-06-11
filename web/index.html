@@ -69,6 +69,20 @@
     border-radius: 4px; padding: 0 5px; font-size: 12px; margin: 0 1px;
   }
   .typing { color: #9298ab; font-size: 13px; }
+  .page-img {
+    display: block; width: 100%; margin-top: 8px;
+    border: 1px solid #eceef5; border-radius: 8px;
+  }
+  .view-page-btn {
+    margin-top: 8px; border: 1px solid #d8dbe8; background: #fff; color: #4d6bfe;
+    border-radius: 8px; padding: 4px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit;
+  }
+  .md-table {
+    border-collapse: collapse; margin: 8px 0; font-size: 13px;
+    white-space: normal; max-width: 100%; display: block; overflow-x: auto;
+  }
+  .md-table th, .md-table td { border: 1px solid #e3e6f0; padding: 5px 10px; text-align: left; }
+  .md-table th { background: #f6f7fb; font-weight: 600; }
 
   /* ---- 输入区 ---- */
   #input-area { padding: 8px 24px 14px; }
@@ -166,12 +180,42 @@ input.addEventListener('input', () => {
   if (!streaming) sendBtn.disabled = !input.value.trim();
 });
 
+function tableCells(line) {
+  let t = line.trim();
+  if (t.startsWith('|')) t = t.slice(1);
+  if (t.endsWith('|')) t = t.slice(0, -1);
+  return t.split('|').map(c => c.trim());
+}
+
+function renderTables(text) {
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const isHeader = lines[i].trim().startsWith('|') && i + 1 < lines.length
+      && /^[\s|:\-]+$/.test(lines[i + 1].trim()) && lines[i + 1].includes('-');
+    if (isHeader) {
+      const header = tableCells(lines[i]);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) { rows.push(tableCells(lines[i])); i++; }
+      out.push('<table class="md-table"><thead><tr>'
+        + header.map(c => '<th>' + c + '</th>').join('')
+        + '</tr></thead><tbody>'
+        + rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('')
+        + '</tbody></table>');
+    } else { out.push(lines[i]); i++; }
+  }
+  return out.join('\n');
+}
+
 function renderAnswer(text) {
   const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return esc
+  const inlined = esc
     .replace(/^#{1,4}\s*(.+)$/gm, '<strong>$1</strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\[来源(\d+)\]/g, '<span class="ref">来源$1</span>');
+  return renderTables(inlined);
 }
 
 function addUserMsg(text) {
@@ -219,6 +263,29 @@ function renderSources(container, sources) {
     const snippet = document.createElement('div');
     snippet.className = 'snippet';
     snippet.textContent = s.text;
+    const imgUrl = `/page-image?source=${encodeURIComponent(s.source)}&page=${s.page}`;
+    const loadImg = () => {
+      const img = document.createElement('img');
+      img.className = 'page-img';
+      img.alt = `《${s.source}》第${s.page}页`;
+      img.src = imgUrl;
+      snippet.appendChild(img);
+    };
+    if (s.kind === 'chart') {
+      // 图表页：展开来源时自动加载原页截图
+      details.addEventListener('toggle', () => {
+        if (details.open && !details.dataset.imgLoaded) {
+          details.dataset.imgLoaded = '1';
+          loadImg();
+        }
+      });
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'view-page-btn';
+      btn.textContent = '查看原页截图';
+      btn.addEventListener('click', () => { btn.remove(); loadImg(); });
+      snippet.appendChild(btn);
+    }
     details.appendChild(summary);
     details.appendChild(snippet);
     wrap.appendChild(details);
