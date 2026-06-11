@@ -11,9 +11,13 @@ from app.rag.agent import stream_agent
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.rag.bm25 import get_bm25
     from app.rag.embedder import get_model
+    from app.rag.reranker import get_reranker
 
     get_model()
+    get_reranker()
+    get_bm25()
     yield
 
 

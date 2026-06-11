@@ -6,6 +6,8 @@ langchain-community
 langchain-text-splitters
 faiss-cpu
 numpy
+jieba
+rank_bm25
 sentence-transformers
 fastapi
 uvicorn[standard]

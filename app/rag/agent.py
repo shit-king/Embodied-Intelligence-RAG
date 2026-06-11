@@ -5,14 +5,14 @@ from typing import Iterator, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from app.config import TOP_K
-from app.rag.embedder import embed_query
 from app.rag.qa import SYSTEM_PROMPT, USER_PROMPT, build_context, get_llm
-from app.rag.vectorstore import get_vector_store
+from app.rag.reranker import rerank
+from app.rag.retriever import hybrid_recall
 
-MIN_SCORE = 0.5          # 最高分低于此值视为检索失败，触发改写重试
-SUB_QUERY_TOP_K = 4      # 拆解后每个子问题的召回数
-MAX_MERGED_HITS = 10     # 合并后送入生成的上下文块上限
+MIN_SCORE = 0.2          # rerank最高分低于此值视为检索失败，触发改写重试
+RECALL_TOP_K = 12        # 每个查询混合召回的候选数
+MAX_CANDIDATES = 30      # 送入reranker的候选上限
+MAX_MERGED_HITS = 10     # 精排后送入生成的上下文块上限
 
 ROUTE_PROMPT = """判断用户问题属于哪类，只输出JSON：{{"route": "simple"或"complex"}}
 
@@ -65,17 +65,16 @@ def decompose_node(state: AgentState) -> AgentState:
 
 def retrieve_node(state: AgentState) -> AgentState:
     queries = state.get("sub_queries") or [state["question"]]
-    top_k = SUB_QUERY_TOP_K if len(queries) > 1 else TOP_K
-    store = get_vector_store()
-    merged, seen = [], set()
+    candidates, seen = [], set()
     for query in queries:
-        for hit in store.search(embed_query(query), top_k):
+        for hit in hybrid_recall(query, RECALL_TOP_K):
             key = (hit["source"], hit["page"], hit["text"][:80])
             if key not in seen:
                 seen.add(key)
-                merged.append(hit)
-    merged.sort(key=lambda h: h["score"], reverse=True)
-    return {"hits": merged[:MAX_MERGED_HITS]}
+                candidates.append(hit)
+    # RRF分仅用于路内排序，跨查询合并后统一交给reranker按原问题精排
+    ranked = rerank(state["question"], candidates[:MAX_CANDIDATES])
+    return {"hits": ranked[:MAX_MERGED_HITS]}
 
 
 def rewrite_node(state: AgentState) -> AgentState:
@@ -144,5 +143,5 @@ def stream_agent(question: str) -> Iterator[dict]:
                 elif node == "rewrite":
                     yield {"type": "step", "data": "检索相关度不足，改写查询重试"}
                 elif node == "retrieve":
-                    yield {"type": "step", "data": f"召回{len(delta['hits'])}个相关片段"}
+                    yield {"type": "step", "data": f"向量+BM25双路召回，精排后取{len(delta['hits'])}个片段"}
                     yield {"type": "sources", "data": delta["hits"]}

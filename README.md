@@ -9,6 +9,7 @@
 ## 功能特性
 
 - **Agentic RAG**（LangGraph）：自动路由——简单问题直接检索，复杂问题（对比/综合/多主题）拆解为多个子查询分路召回再合并；检索相关度不足时自动改写查询重试；agent每步决策实时推送到前端
+- **混合检索 + 精排**：向量（bge-m3）与 BM25（jieba）双路召回，RRF 融合，bge-reranker-v2-m3 交叉编码精排——专有名词、数字事实类查询显著提升（如"Unitree Dex5"从混入无关结果到 top3 全中 0.99 分）
 - **来源可溯源**：回答中的每个论断标注 `[来源N]`，前端展示报告名、页码与可展开的原文片段；资料中没有的信息明确回答"未提及"，抑制幻觉
 - **流式输出**：SSE 推送，先返回检索来源，再逐字输出回答
 - **多源观点对比**：不同报告口径不一致时（如全球 vs 中国市场规模），分别列出并指明出处
@@ -30,10 +31,11 @@ flowchart LR
 ```mermaid
 flowchart LR
     Q[用户问题] --> R{路由判断}
-    R -->|简单| RT[向量检索]
+    R -->|简单| RT[向量+BM25双路召回<br>RRF融合]
     R -->|复杂| DC[拆解为2-4个子查询] --> RT
-    RT --> J{相关度充分?}
-    J -->|最高分<0.5 且未重试| RW[LLM改写查询] --> RT
+    RT --> RR[bge-reranker精排<br>取Top10]
+    RR --> J{相关度充分?}
+    J -->|rerank分<0.2 且未重试| RW[LLM改写查询] --> RT
     J -->|充分| SY[DeepSeek合成<br>强制引用Prompt]
     SY -->|SSE: 步骤+来源+token流| G[Web界面]
 ```
@@ -46,6 +48,8 @@ flowchart LR
 | 切块 | LangChain RecursiveCharacterTextSplitter | 中文标点分隔符优先级（段落>句>逗号），语义边界更完整 |
 | Embedding | bge-m3（本地GPU） | 中文检索效果第一梯队，本地推理零API成本；归一化后内积=余弦相似度 |
 | 向量库 | FAISS | 纯本地、性能稳定；代码内置 `VectorStore` 抽象层，可平滑替换 Milvus 等 |
+| 关键词检索 | jieba + rank_bm25 | 弥补向量检索对专有名词/型号/缩写的弱势；RRF融合免去分数归一化 |
+| 精排 | bge-reranker-v2-m3 | 交叉编码器逐对打分远准于双塔余弦；分数还复用为检索失败判据（触发查询改写） |
 | Agent编排 | LangGraph | 条件边表达路由与自修正循环；`stream_mode=["updates","messages"]` 同时取节点事件和token流 |
 | LLM | DeepSeek API | 中文生成质量好、成本低；Prompt 强制引用编号 + 禁止编造；JSON mode做路由/拆解的结构化输出 |
 | 服务 | FastAPI + 原生JS单页 | SSE 流式接口，无前端框架依赖 |
@@ -91,8 +95,11 @@ app/
 ├── rag/
 │   ├── embedder.py      # bge-m3 封装（单例加载、批量编码）
 │   ├── vectorstore.py   # VectorStore抽象层 + FAISS实现
+│   ├── bm25.py          # jieba分词BM25索引（与FAISS同源语料，分词缓存）
+│   ├── retriever.py     # 向量+BM25双路召回，RRF融合
+│   ├── reranker.py      # bge-reranker-v2-m3 交叉编码精排
 │   ├── qa.py            # 检索、上下文组装、引用Prompt（基线RAG，供对照评估）
-│   └── agent.py         # LangGraph agent：路由/拆解/多路检索/改写重试/合成
+│   └── agent.py         # LangGraph agent：路由/拆解/混合检索/精排/改写重试/合成
 └── api/main.py          # FastAPI：SSE流式 /ask 接口（步骤+来源+token三类事件）
 web/index.html           # 聊天界面：流式渲染、来源徽章、原文卡片
 ```
@@ -102,7 +109,7 @@ web/index.html           # 聊天界面：流式渲染、来源徽章、原文�
 ## Roadmap
 
 - [x] **Agentic RAG**（LangGraph）：问题路由 + 拆解 + 多路检索 + 低分自动改写重试
-- [ ] **混合检索 + 重排**：BM25 + 向量双路召回，bge-reranker 精排
+- [x] **混合检索 + 重排**：BM25 + 向量双路召回 RRF 融合，bge-reranker-v2-m3 精排
 - [ ] **图表多模态解析**：280 个被跳过的扫描/图表页，用视觉模型转为可检索文本
 - [ ] **RAGAS 评估体系**：构建评测集，量化检索/生成质量
 - [ ] **Milvus 迁移**：基于现有 VectorStore 抽象层
