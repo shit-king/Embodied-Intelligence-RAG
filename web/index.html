@@ -69,14 +69,6 @@
     border-radius: 4px; padding: 0 5px; font-size: 12px; margin: 0 1px;
   }
   .typing { color: #9298ab; font-size: 13px; }
-  .page-img {
-    display: block; width: 100%; margin-top: 8px;
-    border: 1px solid #eceef5; border-radius: 8px;
-  }
-  .view-page-btn {
-    margin-top: 8px; border: 1px solid #d8dbe8; background: #fff; color: #4d6bfe;
-    border-radius: 8px; padding: 4px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit;
-  }
   .md-table {
     border-collapse: collapse; margin: 8px 0; font-size: 13px;
     white-space: normal; max-width: 100%; display: block; overflow-x: auto;
@@ -263,29 +255,6 @@ function renderSources(container, sources) {
     const snippet = document.createElement('div');
     snippet.className = 'snippet';
     snippet.textContent = s.text;
-    const imgUrl = `/page-image?source=${encodeURIComponent(s.source)}&page=${s.page}`;
-    const loadImg = () => {
-      const img = document.createElement('img');
-      img.className = 'page-img';
-      img.alt = `《${s.source}》第${s.page}页`;
-      img.src = imgUrl;
-      snippet.appendChild(img);
-    };
-    if (s.kind === 'chart') {
-      // 图表页：展开来源时自动加载原页截图
-      details.addEventListener('toggle', () => {
-        if (details.open && !details.dataset.imgLoaded) {
-          details.dataset.imgLoaded = '1';
-          loadImg();
-        }
-      });
-    } else {
-      const btn = document.createElement('button');
-      btn.className = 'view-page-btn';
-      btn.textContent = '查看原页截图';
-      btn.addEventListener('click', () => { btn.remove(); loadImg(); });
-      snippet.appendChild(btn);
-    }
     details.appendChild(summary);
     details.appendChild(snippet);
     wrap.appendChild(details);
