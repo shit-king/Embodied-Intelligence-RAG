@@ -37,7 +37,16 @@ def _lines(page: fitz.Page) -> list[tuple[fitz.Rect, str]]:
 
 def detect_figures(page: fitz.Page) -> list[dict]:
     W, H = page.rect.width, page.rect.height
+    mid = W / 2
     lines = _lines(page)
+    caps = [(r, t) for r, t in lines if CAP_RE.match(t)]
+    # 双栏判定：左右半区都有图注（研报常见的图网格页）
+    two_col = any(r.x0 < mid for r, _ in caps) and any(r.x0 >= mid for r, _ in caps)
+
+    def col_of(r: fitz.Rect) -> tuple[float, float]:
+        if not two_col:
+            return W * 0.05, W * 0.95
+        return (W * 0.04, mid - 4) if r.x0 < mid else (mid + 4, W * 0.96)
 
     def kind(r: fitz.Rect, t: str) -> str:
         if CAP_RE.match(t):
@@ -46,13 +55,13 @@ def detect_figures(page: fitz.Page) -> list[dict]:
             return "src"
         if r.y0 < H * 0.06 or r.y1 > H * 0.95:
             return "edge"
-        if r.width > W * 0.55 and len(t) > 24:
+        if r.width > (mid if two_col else W) * 0.55 and len(t) > 20:
             return "body"
         return "minor"  # 短文本：多为图内坐标轴/图例标签
 
     tagged = [(r, t, kind(r, t)) for r, t in lines]
-    caps = [(r, t) for r, t, k in tagged if k == "cap"]
-    bounds = [r for r, t, k in tagged if k in ("body", "edge", "cap")]
+    # 边界行：图注/正文/页眉脚 + "资料来源"行（来源行收尾一张图，必须作边界，否则会越过它误并相邻图）
+    bounds = [r for r, t, k in tagged if k in ("body", "edge", "cap", "src")]
 
     rasters = [fitz.Rect(im["bbox"]) for im in page.get_image_info()]
     grects = list(rasters)
@@ -61,40 +70,52 @@ def detect_figures(page: fitz.Page) -> list[dict]:
         if dr.width > 8 and dr.height > 8:
             grects.append(dr)
 
-    def ink(lo: float, hi: float) -> float:
-        if hi <= lo:
-            return 0.0
-        s = 0.0
-        for g in grects:
-            if g.y0 >= lo - 3 and g.y1 <= hi + 3:
-                s += g.width * g.height
-        for r, t, k in tagged:
-            if k == "minor" and r.y0 >= lo and r.y1 <= hi:
-                s += r.width * r.height
-        return s
-
     figs = []
     for cr, ct in caps:
-        up = max([r.y1 for r in bounds if r.y1 <= cr.y0 - 1] + [0.0])
-        below = [r.y0 for r in bounds if r.y0 >= cr.y1 + 1]
-        down = min(below) if below else H
+        cx0, cx1 = col_of(cr)
+
+        def in_col(r: fitz.Rect) -> bool:  # x 与本栏有效重叠（双栏时隔离另一栏的内容）
+            return min(r.x1, cx1) - max(r.x0, cx0) > (cx1 - cx0) * 0.15
+
+        up = max([r.y1 for r in bounds if r.y1 <= cr.y0 - 2 and in_col(r)] + [0.0])
+        below = [r.y0 for r in bounds if r.y0 >= cr.y1 + 2 and in_col(r)]
+        down = min(below) if below else H * 0.95
+
+        def ink(lo: float, hi: float) -> float:
+            if hi <= lo:
+                return 0.0
+            s = 0.0
+            for g in grects:
+                if g.y0 >= lo - 3 and g.y1 <= hi + 3 and in_col(g):
+                    s += (min(g.x1, cx1) - max(g.x0, cx0)) * g.height
+            for r, t, k in tagged:
+                if k == "minor" and r.y0 >= lo and r.y1 <= hi and in_col(r):
+                    s += r.width * r.height
+            return s
+
         ink_above, ink_below = ink(up, cr.y0), ink(cr.y1, down)
-        if max(ink_above, ink_below) < W * H * 0.02:
-            continue  # 图注两侧都无成片图形 → 跳过
+        if max(ink_above, ink_below) < (cx1 - cx0) * H * 0.02:
+            continue  # 图注两侧（本栏内）都无成片图形 → 跳过
         if ink_above >= ink_below:
-            top, bot = up, cr.y1            # 图在注上方
+            top, bot = up, cr.y1            # 图在注上方（图注随之纳入裁剪底部）
         else:
-            top, bot = cr.y0, down          # 图在注下方
+            top, bot = cr.y0, down          # 图在注下方（图注随之纳入裁剪顶部）
         for r, t, k in tagged:              # 纳入紧贴图底的"资料来源"行
-            if k == "src" and top - 3 <= r.y0 and abs(r.y0 - bot) < 50:
+            if k == "src" and in_col(r) and top - 3 <= r.y0 and abs(r.y0 - bot) < 50:
                 bot = max(bot, r.y1)
-        reg = fitz.Rect(W * 0.05, max(0, top - 2), W * 0.95, min(H, bot + 2))
+        # x 收紧到本栏内实际图形的横向范围，去掉栏内留白
+        gx = [g for g in grects if g.y0 >= top - 3 and g.y1 <= bot + 3 and in_col(g)]
+        if gx:
+            x0, x1 = max(cx0, min(g.x0 for g in gx) - 4), min(cx1, max(g.x1 for g in gx) + 4)
+        else:
+            x0, x1 = cx0, cx1
+        reg = fitz.Rect(x0, max(0, top - 2), x1, min(H, bot + 2))
         if reg.height < 70 or reg.width < 100:
             continue
         figs.append({
             "caption": ct,
             "bbox": [round(reg.x0, 1), round(reg.y0, 1), round(reg.x1, 1), round(reg.y1, 1)],
-            "raster": any(reg.y0 - 3 <= g.y0 and g.y1 <= reg.y1 + 3 for g in rasters),
+            "raster": any(reg.y0 - 3 <= g.y0 and g.y1 <= reg.y1 + 3 and in_col(g) for g in rasters),
         })
     return figs
 
