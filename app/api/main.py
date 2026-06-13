@@ -32,12 +32,13 @@ app = FastAPI(title="具身智能RAG问答", lifespan=lifespan)
 class AskRequest(BaseModel):
     question: str
     mode: str = "fast"
+    thread_id: str = "default"  # 同一会话跨轮共享，用于多轮对话历史
 
 
 @app.post("/ask")
 def ask(req: AskRequest) -> StreamingResponse:
     def gen():
-        for evt in stream_agent(req.question, req.mode):
+        for evt in stream_agent(req.question, req.mode, req.thread_id):
             if evt["type"] == "token":
                 yield f"data: {json.dumps(evt['data'], ensure_ascii=False)}\n\n"
             else:

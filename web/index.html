@@ -116,6 +116,12 @@
     color: #fff; font-size: 14px; cursor: pointer; font-family: inherit;
   }
   #send:disabled { background: #e7eaf3; color: #aab0c0; cursor: not-allowed; }
+  #right-controls { display: flex; align-items: center; gap: 8px; }
+  #new-chat {
+    padding: 8px 14px; border: 1px solid #d8dbe8; border-radius: 12px; background: #fff;
+    color: #6b7080; font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+  #new-chat:hover { border-color: #4d6bfe; color: #4d6bfe; }
   #footer-note { text-align: center; color: #b3b8c7; font-size: 12px; margin-top: 10px; }
 </style>
 </head>
@@ -151,10 +157,13 @@
         <button id="mode-fast" class="active" title="deepseek-v4-flash，响应快">@ 快速</button>
         <button id="mode-thinking" title="deepseek-v4-pro，推理更深">✳ 思考</button>
       </div>
-      <button id="send" disabled>发送</button>
+      <div id="right-controls">
+        <button id="new-chat" title="清空上下文，开始新对话">+ 新对话</button>
+        <button id="send" disabled>发送</button>
+      </div>
     </div>
   </div>
-  <div id="footer-note">所有内容均由 AI 生成，内容仅供参考，请仔细甄别</div>
+  <div id="footer-note">支持追问（如先问"宇树的发展历程"，再问"它的融资情况呢"）· 所有内容均由 AI 生成，请仔细甄别</div>
 </div>
 <script>
 const chat = document.getElementById('chat');
@@ -163,6 +172,17 @@ const sendBtn = document.getElementById('send');
 const hero = document.getElementById('hero');
 
 let mode = 'fast';
+function newThreadId() { return 't-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8); }
+let threadId = newThreadId();  // 每个会话一个，"新对话"或刷新页面即重置
+
+document.getElementById('new-chat').addEventListener('click', () => {
+  if (streaming) return;
+  threadId = newThreadId();
+  for (const m of chat.querySelectorAll('.msg')) m.remove();
+  hero.style.display = '';
+  input.focus();
+});
+
 for (const m of ['fast', 'thinking']) {
   document.getElementById('mode-' + m).addEventListener('click', () => {
     mode = m;
@@ -347,7 +367,7 @@ async function ask() {
     const resp = await fetch('/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q, mode }),
+      body: JSON.stringify({ question: q, mode, thread_id: threadId }),
     });
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
