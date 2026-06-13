@@ -75,6 +75,17 @@
   }
   .md-table th, .md-table td { border: 1px solid #e3e6f0; padding: 5px 10px; text-align: left; }
   .md-table th { background: #f6f7fb; font-weight: 600; }
+  .chart-fig {
+    margin: 10px 0; border: 1px solid #eceef5; border-radius: 10px;
+    overflow: hidden; background: #fbfcfe; max-width: 460px;
+  }
+  .chart-fig img { display: block; width: 100%; cursor: zoom-in; }
+  .chart-fig figcaption {
+    padding: 6px 12px; font-size: 12px; color: #8a8fa3;
+    border-top: 1px dashed #eceef5; white-space: normal;
+  }
+  .related-figs { margin-top: 10px; max-width: 88%; }
+  .related-figs .rf-title { font-size: 12.5px; color: #6b7080; margin-bottom: 6px; font-weight: 600; }
 
   /* ---- 输入区 ---- */
   #input-area { padding: 8px 24px 14px; }
@@ -179,8 +190,67 @@ function tableCells(line) {
   return t.split('|').map(c => c.trim());
 }
 
-function renderTables(text) {
-  const lines = text.split('\n');
+function refSpan(s) {
+  return s.replace(/\[来源(\d+)\]/g, '<span class="ref">来源$1</span>');
+}
+
+function chartFigure(s, n) {
+  const url = `/page-image?source=${encodeURIComponent(s.source)}&page=${s.page}`;
+  const cap = `《${s.source}》第${s.page}页 · 来源${n}`
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return '<figure class="chart-fig">'
+    + `<img src="${url}" alt="${cap}" loading="lazy"`
+    + ' onclick="window.open(this.src)" onerror="this.closest(\'figure\').remove()">'
+    + `<figcaption>📊 ${cap}</figcaption></figure>`;
+}
+
+function renderFigures(container, figures) {
+  if (!figures || !figures.length) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'related-figs';
+  const title = document.createElement('div');
+  title.className = 'rf-title';
+  title.textContent = '📊 相关图表（按问题召回）';
+  wrap.appendChild(title);
+  for (const f of figures) {
+    const bbox = f.bbox.join(',');
+    const url = `/figure-image?source=${encodeURIComponent(f.source)}&page=${f.page}&bbox=${encodeURIComponent(bbox)}`;
+    const fig = document.createElement('figure');
+    fig.className = 'chart-fig';
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = f.caption;
+    img.addEventListener('click', () => window.open(url));
+    img.addEventListener('error', () => fig.remove());
+    const cap = document.createElement('figcaption');
+    cap.textContent = `${f.caption} · 《${f.source}》第${f.page}页`;
+    fig.appendChild(img);
+    fig.appendChild(cap);
+    wrap.appendChild(fig);
+  }
+  container.appendChild(wrap);
+}
+
+// 传入 sources 时：正文中通过 [来源N] 引用到的图表页，会内联渲染到引用它的段落正下方（每张图仅一次）
+function renderAnswer(text, sources) {
+  const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const base = esc
+    .replace(/^#{1,4}\s*(.+)$/gm, '<strong>$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  const chartIdx = new Set();
+  if (sources) sources.forEach((s, i) => { if (s.kind === 'chart') chartIdx.add(i + 1); });
+  const inserted = new Set();
+  const emitFigures = (raw, out) => {
+    if (!chartIdx.size) return;
+    for (const m of raw.matchAll(/\[来源(\d+)\]/g)) {
+      const n = +m[1];
+      if (chartIdx.has(n) && !inserted.has(n)) {
+        inserted.add(n);
+        out.push(chartFigure(sources[n - 1], n));
+      }
+    }
+  };
+  const lines = base.split('\n');
   const out = [];
   let i = 0;
   while (i < lines.length) {
@@ -190,24 +260,21 @@ function renderTables(text) {
       const header = tableCells(lines[i]);
       i += 2;
       const rows = [];
-      while (i < lines.length && lines[i].trim().startsWith('|')) { rows.push(tableCells(lines[i])); i++; }
+      let raw = '';
+      while (i < lines.length && lines[i].trim().startsWith('|')) { raw += lines[i] + '\n'; rows.push(tableCells(lines[i])); i++; }
       out.push('<table class="md-table"><thead><tr>'
-        + header.map(c => '<th>' + c + '</th>').join('')
+        + header.map(c => '<th>' + refSpan(c) + '</th>').join('')
         + '</tr></thead><tbody>'
-        + rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('')
+        + rows.map(r => '<tr>' + r.map(c => '<td>' + refSpan(c) + '</td>').join('') + '</tr>').join('')
         + '</tbody></table>');
-    } else { out.push(lines[i]); i++; }
+      emitFigures(raw, out);
+    } else {
+      out.push(refSpan(lines[i]));
+      emitFigures(lines[i], out);
+      i++;
+    }
   }
   return out.join('\n');
-}
-
-function renderAnswer(text) {
-  const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const inlined = esc
-    .replace(/^#{1,4}\s*(.+)$/gm, '<strong>$1</strong>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\[来源(\d+)\]/g, '<span class="ref">来源$1</span>');
-  return renderTables(inlined);
 }
 
 function addUserMsg(text) {
@@ -275,6 +342,7 @@ async function ask() {
   const { div, bubble, steps } = addBotMsg();
   let answerText = '';
   let sources = [];
+  let figures = [];
   try {
     const resp = await fetch('/ask', {
       method: 'POST',
@@ -298,6 +366,8 @@ async function ask() {
         }
         if (eventType === 'sources') {
           sources = JSON.parse(data);
+        } else if (eventType === 'figures') {
+          figures = JSON.parse(data);
         } else if (eventType === 'step') {
           addStep(steps, JSON.parse(data));
         } else if (eventType === 'message' && data) {
@@ -307,6 +377,8 @@ async function ask() {
         }
       }
     }
+    if (answerText) bubble.innerHTML = renderAnswer(answerText, sources);
+    renderFigures(div, figures);
     if (sources.length) renderSources(div, sources);
   } catch (e) {
     bubble.textContent = '请求出错：' + e.message;

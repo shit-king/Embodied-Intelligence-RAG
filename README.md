@@ -11,6 +11,7 @@
 - **Agentic RAG**（LangGraph）：自动路由——简单问题直接检索，复杂问题（对比/综合/多主题）拆解为多个子查询分路召回再合并；检索相关度不足时自动改写查询重试；agent每步决策实时推送到前端
 - **混合检索 + 精排**：向量（bge-m3）与 BM25（jieba）双路召回，RRF 融合，bge-reranker-v2-m3 交叉编码精排——专有名词、数字事实类查询显著提升（如"Unitree Dex5"从混入无关结果到 top3 全中 0.99 分）
 - **图表多模态**：280个无文字层的扫描/图表页经 Qwen-VL 转写为结构化文本（图表数据点、表格、产业链图谱）入库，图表里的数字也能被检索问答，来源卡片带"图表页"标记
+- **图注召回与裁剪**：扫全库 1960 张图的「图N: 标题」图注建语义索引，提问时按相关度召回最匹配的图，用 PyMuPDF 从 PDF 页**裁出图区插入回答**（如问"宇树发展历程"直接附上时间轴图）
 - **来源可溯源**：回答中的每个论断标注 `[来源N]`，前端展示报告名、页码与可展开的原文片段；资料中没有的信息明确回答"未提及"，抑制幻觉
 - **流式输出**：SSE 推送，先返回检索来源，再逐字输出回答
 - **多源观点对比**：不同报告口径不一致时（如全球 vs 中国市场规模），分别列出并指明出处
@@ -83,6 +84,7 @@ copy .env.example .env   # 填入你的 key
 .venv\Scripts\python app\ingest\parse_pdfs.py
 .venv\Scripts\python app\ingest\parse_charts.py   # 可选：图表页VL转写（需.env配VL_API_KEY，百炼qwen-vl）
 .venv\Scripts\python app\ingest\build_index.py
+.venv\Scripts\python app\ingest\parse_figures.py   # 可选：抽取图注+图区bbox，启用"按问题召回图表并裁剪插入回答"
 
 # 5. 启动服务（首次启动需约30秒加载embedding模型）
 .venv\Scripts\python -m uvicorn app.api.main:app --port 8000
@@ -97,7 +99,8 @@ app/
 ├── ingest/
 │   ├── parse_pdfs.py    # PDF→页级JSON：哈希去重、断点续跑、扫描页记录
 │   ├── parse_charts.py  # 图表页→Qwen-VL转写为可检索文本，逐页断点续跑
-│   └── build_index.py   # 切块→bge-m3编码→FAISS入库（文本+图表统一索引）
+│   ├── build_index.py   # 切块→bge-m3编码→FAISS入库（文本+图表统一索引）
+│   └── parse_figures.py # 扫全库图注+图区bbox→figures.jsonl（按问题召回图表并裁剪）
 ├── rag/
 │   ├── embedder.py      # bge-m3 封装（单例加载、批量编码）
 │   ├── vectorstore.py   # VectorStore抽象层 + FAISS实现
@@ -105,9 +108,10 @@ app/
 │   ├── retriever.py     # 向量+BM25双路召回，RRF融合
 │   ├── reranker.py      # bge-reranker-v2-m3 交叉编码精排
 │   ├── qa.py            # 检索、上下文组装、引用Prompt（基线RAG，供对照评估）
+│   ├── figures.py       # 图注向量召回（bge-m3 嵌入图注，按问题语义匹配相关图）
 │   └── agent.py         # LangGraph agent：路由/拆解/混合检索/精排/改写重试/合成
-└── api/main.py          # FastAPI：SSE流式 /ask 接口（步骤+来源+token三类事件）
-web/index.html           # 聊天界面：流式渲染、来源徽章、原文卡片
+└── api/main.py          # FastAPI：SSE流式 /ask（步骤+来源+图表+token）+ /page-image、/figure-image 渲染
+web/index.html           # 聊天界面：流式渲染、来源徽章、相关图表区、图表裁剪展示
 ```
 
 当前语料规模：120 份报告（去重后）→ 4,765 文本页 → 10,933 个向量块。
@@ -121,6 +125,7 @@ web/index.html           # 聊天界面：流式渲染、来源徽章、原文�
 - [v0.3 混合检索与Rerank精排](docs/v0.3-混合检索与rerank精排.md) — BM25互补性、RRF融合、交叉编码器原理、两阶段架构
 - [v0.4 RAGAS评估体系](docs/v0.4-ragas评估体系.md) — 无参考指标、双环境解耦、LLM裁判的坑、诚实的trade-off分析
 - [v0.5 图表多模态解析](docs/v0.5-图表多模态解析.md) — VL转写vs多模态检索的取舍、幂等管道、统一索引设计
+- [v0.6 图注召回与裁剪](docs/v0.6-图注召回与裁剪.md) — 图注语义召回、连续带裁剪、按需渲染、与引用内联的互补
 
 ## 评估结果（v0.1基线 → v0.3完整链路）
 
@@ -138,4 +143,5 @@ web/index.html           # 聊天界面：流式渲染、来源徽章、原文�
 - [x] **混合检索 + 重排**：BM25 + 向量双路召回 RRF 融合，bge-reranker-v2-m3 精排
 - [x] **RAGAS 评估体系**：16题分类评估集，基线vs完整链路对照，DeepSeek裁判三指标（[报告](eval/results.md)）
 - [x] **图表多模态解析**：280 个扫描/图表页经 Qwen-VL 转写入库（890块，零失败）
+- [x] **图注召回与裁剪**：扫全库图注建索引（1960张图），按问题语义召回最相关的图并从 PDF 裁剪插入回答
 - [ ] **Milvus 迁移**：基于现有 VectorStore 抽象层

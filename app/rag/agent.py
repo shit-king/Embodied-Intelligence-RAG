@@ -123,7 +123,14 @@ def get_graph():
 
 
 def stream_agent(question: str, mode: str = "fast") -> Iterator[dict]:
-    """产出事件流：{"type": "step"|"sources"|"token", "data": ...}"""
+    """产出事件流：{"type": "step"|"sources"|"figures"|"token", "data": ...}"""
+    from app.rag.figures import search_figures
+
+    figures = search_figures(question)
+    if figures:
+        yield {"type": "step", "data": f"按图注召回 {len(figures)} 张相关图表"}
+        yield {"type": "figures", "data": figures}
+
     graph = get_graph()
     for stream_mode, chunk in graph.stream(
         {"question": question, "mode": mode},
