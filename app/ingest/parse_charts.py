@@ -80,7 +80,8 @@ def main() -> None:
     if args.limit:
         worklist = worklist[: args.limit]
 
-    client = OpenAI(base_url=VL_BASE_URL, api_key=os.environ["VL_API_KEY"])
+    # 显式超时：VL 接口偶发挂起，无超时会堵塞整个管道；超时后由下方重试循环兜底
+    client = OpenAI(base_url=VL_BASE_URL, api_key=os.environ["VL_API_KEY"], timeout=90.0, max_retries=2)
     failed = 0
     with open(CHARTS_PATH, "a", encoding="utf-8") as f:
         for n, (digest, source, pdf_path, page) in enumerate(worklist, 1):

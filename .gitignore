@@ -1,6 +1,7 @@
 .env
 data/
 具身智能/
+人形机器人/
 __pycache__/
 *.pyc
 .venv/
