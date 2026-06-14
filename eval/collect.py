@@ -5,6 +5,7 @@
 """
 import json
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -22,7 +23,8 @@ def run_baseline(question: str) -> dict:
 
 def run_agent(question: str) -> dict:
     contexts, tokens = [], []
-    for evt in stream_agent(question):
+    # 每题独立 thread_id：评估是单轮，避免 checkpointer 跨题历史串台污染 condense
+    for evt in stream_agent(question, thread_id=f"eval-{uuid.uuid4()}"):
         if evt["type"] == "sources":
             contexts = [h["text"] for h in evt["data"]]
         elif evt["type"] == "token":
