@@ -15,12 +15,12 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 
-echo Starting server... first model load takes ~30-60s.
-echo Browser opens automatically at http://localhost:%PORT%
+echo Starting server... model load takes ~60-90s on CPU.
+echo Browser opens automatically at http://localhost:%PORT% (just refresh if it shows refused).
 echo To STOP: close this window or press Ctrl+C.
 echo.
 
-start "" cmd /c "ping -n 50 127.0.0.1 >nul & start http://localhost:%PORT%"
+start "" cmd /c "ping -n 95 127.0.0.1 >nul & start http://localhost:%PORT%"
 
 .venv\Scripts\python.exe -m uvicorn app.api.main:app --port %PORT%
 

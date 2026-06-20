@@ -10,7 +10,25 @@ PARSED_DIR = DATA_DIR / "parsed"
 
 EMBEDDING_MODEL = "BAAI/bge-m3"
 EMBEDDING_DIM = 1024
-EMBEDDING_DEVICE = "cuda"
+# 有 NVIDIA 卡走 cuda，否则回落 cpu（集显笔记本即走此分支）；可用环境变量 EMBEDDING_DEVICE 覆盖
+import os as _os
+
+
+def _pick_device() -> str:
+    forced = _os.getenv("EMBEDDING_DEVICE")
+    if forced:
+        return forced
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+    except Exception:
+        pass
+    return "cpu"
+
+
+EMBEDDING_DEVICE = _pick_device()
 EMBEDDING_BATCH_SIZE = 16
 
 CHUNK_SIZE = 500
